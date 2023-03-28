@@ -1,4 +1,147 @@
-             when (transaction.type) {
+package com.fampay.`in`.adapters
+
+import android.content.Intent
+import android.content.res.ColorStateList
+import android.graphics.Color
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.TextView
+import android.widget.Toast
+import androidx.recyclerview.widget.RecyclerView
+import com.fampay.`in`.R
+import com.fampay.`in`.base.BaseActivity
+import com.fampay.`in`.helpers.analytics.Source
+import com.fampay.`in`.models.enums.TransactionPerspective
+import com.fampay.`in`.models.transactions.BasicTransactionResponseModel
+import com.fampay.`in`.models.transactions.external_source.ExternalSourceModel
+import com.fampay.`in`.models.user.User
+import com.fampay.`in`.ui.transaction_details.TransactionDetailsActivity
+import com.fampay.`in`.utils.ImageUtils
+import com.fampay.`in`.utils.StringUtils
+import com.fampay.`in`.utils.ViewUtils
+
+class RecentTransactionsAdapter(private var baseActivity: BaseActivity) :
+    RecyclerView.Adapter<RecentTransactionsAdapter.TransactionViewHolder>() {
+
+    enum class CardType {
+        CARD_TOP,
+        CARD_MIDDLE,
+        CARD_BOTTOM,
+        CARD_SINGLE
+    }
+
+    private var transactions: ArrayList<BasicTransactionResponseModel> = ArrayList()
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): TransactionViewHolder {
+        val inflater: LayoutInflater = LayoutInflater.from(parent.context)
+        return TransactionViewHolder(
+            inflater.inflate(
+                R.layout.recent_transaction_recycler_item,
+                parent,
+                false
+            )
+        )
+    }
+
+    override fun onBindViewHolder(holder: TransactionViewHolder, position: Int) {
+        var cardType = CardType.CARD_SINGLE
+        if (position == 0 && transactions.size != 1) {
+            cardType = CardType.CARD_TOP
+        } else if (position != 0 && position == transactions.size - 1) {
+            cardType = CardType.CARD_BOTTOM
+        } else if (position != 0 && position < transactions.size - 1) {
+            cardType = CardType.CARD_MIDDLE
+        }
+        holder.bindData(baseActivity, transactions[position], cardType)
+    }
+
+    fun loadRecentTransactions(recentTransactions: ArrayList<BasicTransactionResponseModel>) {
+        transactions.clear()
+        transactions.addAll(recentTransactions)
+        notifyDataSetChanged()
+    }
+
+    override fun getItemCount() = transactions.size
+
+    class TransactionViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        val TAG = "MoneyPage"
+        fun bindData(
+            baseActivity: BaseActivity,
+            transaction: BasicTransactionResponseModel,
+            cardType: CardType
+        ) {
+
+            itemView.setOnClickListener {
+                val intent = Intent(baseActivity, TransactionDetailsActivity::class.java).apply {
+                    this.putExtra(
+                        TransactionDetailsActivity.INTENT_EXTRA_TRANSACTION_ID,
+                        transaction.id
+                    )
+                }
+                baseActivity.startActivity(intent)
+            }
+
+            val horizontalDivider: View = itemView.findViewById(R.id.transaction_divider_line)
+            val itemContainer: LinearLayout =
+                itemView.findViewById(R.id.recent_transactions_item_container)
+            when (cardType) {
+                CardType.CARD_SINGLE -> {
+                    itemContainer.setBackgroundResource(
+                        R.drawable.rounded_rect_background_white_12dp
+                    )
+                    horizontalDivider.visibility = View.GONE
+                }
+                CardType.CARD_TOP -> {
+                    itemContainer.setBackgroundResource(
+                        R.drawable.rounded_top_rect_background_white_12dp
+                    )
+                    horizontalDivider.visibility = View.VISIBLE
+                }
+                CardType.CARD_BOTTOM -> {
+                    itemContainer.setBackgroundResource(
+                        R.drawable.rounded_bottom_rect_background_white_12dp
+                    )
+                    horizontalDivider.visibility = View.GONE
+                }
+                CardType.CARD_MIDDLE -> {}
+                else -> {}
+            }
+            itemContainer.backgroundTintList =
+                ColorStateList.valueOf(Color.parseColor("#292929"))
+
+            val dateTextView: TextView = itemView.findViewById(R.id.tv_date)
+            dateTextView.text = StringUtils.getFormattedString(
+                transaction.dateCreated,
+                "dd MMM • h:m a"
+            )
+
+            val userImageView: ImageView = itemView.findViewById(R.id.iv_user_avatar)
+            val amountTextView: TextView = itemView.findViewById(R.id.tv_amount)
+            val userNameTextView: TextView = itemView.findViewById(R.id.tv_user_name)
+            val txnStatusTextView: TextView = itemView.findViewById(R.id.tv_txn_status)
+
+            var amountColor = Color.WHITE
+            var title = ""
+            var isAmountCredited = true
+            transaction.setupStatus(
+                txnStatusTextView, TransactionPerspective.USER,
+                "#F1F6F7",
+                "#AEAEAE"
+            )
+
+            if (transaction.status == BasicTransactionResponseModel.STATUS_SUCCESS) {
+                txnStatusTextView.visibility = View.GONE
+            } else {
+                txnStatusTextView.visibility = View.VISIBLE
+                if (transaction.status == BasicTransactionResponseModel.STATUS_FAILED) {
+                    txnStatusTextView.setTextColor(Color.parseColor("#F96D6D"))
+                }
+            }
+
+            when (transaction.type) {
                 BasicTransactionResponseModel.TRANSACTION_TYPE_USER_TO_USER -> {
                     var userToDisplay: User?
                     if (transaction.isMe) {
@@ -21,6 +164,7 @@
                         baseActivity.navigateToUserProfile(userToDisplay.username, Source.TXN_CARD)
                     }
                 }
+
                 BasicTransactionResponseModel.TRANSACTION_TYPE_USER_TO_EXTERNAL -> {
                     isAmountCredited = false
                     transaction.externalSourceModel?.let {
@@ -45,6 +189,7 @@
                         }
                     }
                 }
+
                 BasicTransactionResponseModel.TRANSACTION_TYPE_EXTERNAL_TO_USER -> {
                     transaction.externalSourceModel?.let {
                         when (it.type) {
@@ -102,6 +247,7 @@
                         }
                     }
                 }
+
                 BasicTransactionResponseModel.TRANSACTION_TYPE_PERSONAL_TO_SAVINGS -> {
                     isAmountCredited = false
                     if (transaction.isMe) {
@@ -111,6 +257,7 @@
                         // TODO: handle wrong state
                     }
                 }
+
                 BasicTransactionResponseModel.TRANSACTION_TYPE_SAVINGS_TO_PERSONAL -> {
                     if (transaction.isMe) {
                         title = "Savings Account"
@@ -120,8 +267,10 @@
                         // TODO: handle wrong state
                     }
                 }
+
                 BasicTransactionResponseModel.TRANSACTION_TYPE_CREDIT_TO_EXTERNAL -> {
                     val external = transaction.externalSourceModel
+
                     if (transaction.isMe) {
                         when (external.type) {
                             ExternalSourceModel.SOURCE_TYPE_VPA -> {
@@ -157,10 +306,13 @@
                         ).show()
                         return
                     }
+
                     isAmountCredited = false
                     amountColor = Color.parseColor("#FFFCFC") // White
                 }
+
                 BasicTransactionResponseModel.TRANSACTION_TYPE_EXTERNAL_TO_CREDIT -> {
+
                     when (transaction.externalSourceModel.type) {
                         ExternalSourceModel.SOURCE_TYPE_UPI_APP,
                         ExternalSourceModel.SOURCE_TYPE_NETBANKING,
@@ -213,6 +365,7 @@
                             userNameTextView.setOnClickListener(null)
                         }
                     }
+
                     ViewUtils.setupAmountText(
                         baseActivity,
                         amountTextView,
@@ -222,7 +375,9 @@
                         transaction.getColorByStatus(baseActivity)
                     )
                 }
+
                 BasicTransactionResponseModel.TRANSACTION_TYPE_USER_TO_CREDIT -> {
+
                     if (transaction.isMe) {
                         title = "Credit Account"
                         ViewUtils.setupAmountText(
@@ -244,102 +399,43 @@
                     }
                     userImageView.setImageResource(R.drawable.ic_credit_load)
                 }
-                BasicTransactionResponseModel.TRANSACTION_TYPE_EXTERNAL_TO_EXTERNAL -> {
-                    isAmountCredited = false
-                    transaction.externalSourceModel?.let {
-                        when (it.type) {
-                            ExternalSourceModel.SOURCE_TYPE_VPA -> {
-                                title = it.vpa.getName()
-                                it.vpa.loadVpaImage(baseActivity, userImageView)
-                            }
-                            ExternalSourceModel.SOURCE_TYPE_BANK_ACCOUNT -> {
-                                title = it.bankAccountModel.accountHolderName
-                                userImageView.setImageResource(R.drawable.ic_bank_new)
-                            }
-                            ExternalSourceModel.SOURCE_TYPE_MERCHANT -> {
-                                title = it.merchant.name
-                                ImageUtils.loadImage(
-                                    baseActivity,
-                                    it.merchant.icon,
-                                    userImageView,
-                                    R.drawable.ic_shop_new
-                                )
-                            }
-                            ExternalSourceModel.SOURCE_TYPE_UPI_APP -> {
-                                title = it.upiAppModel.appName
-                                userImageView.setImageResource(R.drawable.ic_upi_icon)
-                            }
-                            ExternalSourceModel.SOURCE_TYPE_CARD -> {
-                                title = "${it.cardModel.network}:${it.cardModel.last4}"
-                                userImageView.setImageResource(R.drawable.ic_card)
-                            }
-                            ExternalSourceModel.SOURCE_TYPE_SAVED_CARD -> {
-                                title =
-                                    "${it.savedCardModel.network}:${it.savedCardModel.maskedCard}"
-                                userImageView.setImageResource(R.drawable.ic_card)
-                            }
-                            ExternalSourceModel.SOURCE_TYPE_NETBANKING -> {
-                                title = it.netBankingModel.bankName
-                                userImageView.setImageResource(R.drawable.ic_bank_new)
-                            }
-                        }
-                    }
-                }
             }
-Collapse
- This snippet was truncated for display; see it in full
 
+            if (transaction.status != BasicTransactionResponseModel.STATUS_SUCCESS) {
+                amountColor = Color.parseColor("#838383") // Grey
+            } else if (isAmountCredited) {
+                amountColor = Color.parseColor("#5FB06C")
+            }
 
+            if (isAmountCredited) {
+                ViewUtils.setupAmountText(
+                    baseActivity,
+                    amountTextView,
+                    if (transaction.status == BasicTransactionResponseModel.STATUS_SUCCESS) "+ " else "",
+                    "₹",
+                    getAmountForUI(transaction.amount),
+                    amountColor
+                )
+            } else {
+                ViewUtils.setupAmountText(
+                    baseActivity,
+                    amountTextView,
+                    "",
+                    "₹",
+                    getAmountForUI(transaction.amount),
+                    amountColor
+                )
+            }
+            userNameTextView.text = title
+        }
 
-17:55
-    public static final String TRANSACTION_TYPE_USER_TO_USER = "UU";
-    public static final String TRANSACTION_TYPE_SELF_TO_FAM = "SF";
-    public static final String TRANSACTION_TYPE_FAM_TO_USER = "FU";
-    public static final String TRANSACTION_TYPE_FAM_TO_SELF = "FS";
-    public static final String TRANSACTION_TYPE_FAM_TO_SELF_BY_APPROVAL = "FA";
-    public static final String TRANSACTION_TYPE_USER_TO_EXTERNAL = "UE";
-    public static final String TRANSACTION_TYPE_EXTERNAL_TO_USER = "EU";
-    public static final String TRANSACTION_TYPE_FAM_TO_EXTERNAL = "FE";
-    public static final String TRANSACTION_TYPE_EXTERNAL_TO_FAM = "EF";
-    public static final String TRANSACTION_TYPE_PERSONAL_TO_SAVINGS = "UG";
-    public static final String TRANSACTION_TYPE_FAM_TO_SAVINGS = "FV";
-    public static final String TRANSACTION_TYPE_SAVINGS_TO_PERSONAL = "SU";
-    public static final String TRANSACTION_TYPE_SAVINGS_TO_EXTERNAL = "SE";
-    public static final String TRANSACTION_TYPE_EXTERNAL_TO_EXTERNAL = "EE";
-    public static final String TRANSACTION_TYPE_CREDIT_TO_EXTERNAL = "CE";
-    public static final String TRANSACTION_TYPE_EXTERNAL_TO_CREDIT = "EC";
-    public static final String TRANSACTION_TYPE_USER_TO_CREDIT = "UC";
-
-    public static final int STATUS_PENDING = 1;
-    public static final int STATUS_SUCCESS = 2;
-    public static final int STATUS_FAILED = 3;
-    public static final int STATUS_REFUNDED = 4;
-    public static final int STATUS_PROCESSING = 5;
-    public static final int STATUS_TERMINATED = 6;
-    public static final int STATUS_REVERSED = 7;
-    public static final int STATUS_EXTERNAL_PROCESSING = 8;
-    public static final int STATUS_ON_HOLD = 9;
-    public static final int STATUS_PROCESSED = 10;
-17:55
-    public static final String MODE_P2P = "P2P";
-    public static final String MODE_SELF_P2P = "SP2P";
-    public static final String MODE_P2M = "P2M";
-    public static final String MODE_WALLET_LOAD = "WL";
-    public static final String MODE_PAYOUT = "PO";
-    public static final String MODE_REVERSAL = "REV";
-    public static final String MODE_REWARDS = "RWD";
-    public static final String MODE_UPI = "UC";
-    public static final String MODE_UPI_CREDIT_REVERSAL = "UCR";
-    public static final String MODE_SURCHARGE = "SC";
-
-
-paaji
-  14:26
-
-    public static final String SOURCE_TYPE_VPA = "vpa";
-    public static final String SOURCE_TYPE_UPI_APP = "upi_app";
-    public static final String SOURCE_TYPE_CARD = "card";
-    public static final String SOURCE_TYPE_SAVED_CARD = "saved_card";
-    public static final String SOURCE_TYPE_NETBANKING = "netbanking";
-    public static final String SOURCE_TYPE_BANK_ACCOUNT = "account";
-    public static final String SOURCE_TYPE_MERCHANT = "merchant";
+        private fun getAmountForUI(amount: Int): String {
+            val hasPaise = amount % 100 > 0
+            return if (hasPaise) {
+                "${amount / 100f}"
+            } else {
+                "${amount / 100}"
+            }
+        }
+    }
+}
